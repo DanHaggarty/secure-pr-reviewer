@@ -6,10 +6,15 @@ namespace SecurePrReviewer.Core.Tools;
 /// <param name="LineText">The full text of the matching line.</param>
 public sealed record SearchMatch(string RelativePath, int LineNumber, string LineText);
 
+/// <summary>Result of a repository search: the matches found, and whether more existed than were returned.</summary>
+/// <param name="Matches">The matches found, up to the tool's result limit.</param>
+/// <param name="IsTruncated">True if additional matches existed beyond the result limit.</param>
+public sealed record SearchResult(IReadOnlyList<SearchMatch> Matches, bool IsTruncated);
+
 /// <summary>Searches text files within a repository for a literal string, bounded to the repository root.</summary>
 public sealed class SearchRepositoryTool
 {
-    private const int MaxResults = 100;
+    private const int MaxResults = 50;
 
     private static readonly string[] IgnoredDirectories = { ".git", "bin", "obj" };
 
@@ -25,9 +30,9 @@ public sealed class SearchRepositoryTool
     /// <summary>Recursively searches repository files for lines containing <paramref name="query"/>.</summary>
     /// <param name="query">Literal text to search for; must not be empty or whitespace.</param>
     /// <param name="cancellationToken">Token used to cancel the search.</param>
-    /// <returns>Up to 100 matches, in file-enumeration order.</returns>
+    /// <returns>Up to 50 matches, in file-enumeration order, with <see cref="SearchResult.IsTruncated"/> set if more existed.</returns>
     /// <exception cref="ArgumentException"><paramref name="query"/> is empty or whitespace.</exception>
-    public async Task<IReadOnlyList<SearchMatch>> ExecuteAsync(
+    public async Task<SearchResult> ExecuteAsync(
         string query,
         CancellationToken cancellationToken = default)
     {
@@ -44,18 +49,18 @@ public sealed class SearchRepositoryTool
             {
                 if (lines[i].Contains(query, StringComparison.Ordinal))
                 {
+                    if (matches.Count == MaxResults)
+                        return new SearchResult(matches, IsTruncated: true);
+
                     matches.Add(new SearchMatch(
                         Path.GetRelativePath(_repositoryRoot, filePath),
                         i + 1,
                         lines[i]));
-
-                    if (matches.Count >= MaxResults)
-                        return matches;
                 }
             }
         }
 
-        return matches;
+        return new SearchResult(matches, IsTruncated: false);
     }
 
     private static IEnumerable<string> EnumerateSearchableFiles(string directory)

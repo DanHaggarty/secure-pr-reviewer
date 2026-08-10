@@ -21,12 +21,13 @@ namespace SecurePrReviewer.Tests
 
             var tool = new SearchRepositoryTool(_repositoryRoot);
 
-            var matches = await tool.ExecuteAsync("hello");
+            var result = await tool.ExecuteAsync("hello");
 
-            var match = Assert.Single(matches);
+            var match = Assert.Single(result.Matches);
             Assert.Equal("file.txt", match.RelativePath);
             Assert.Equal(2, match.LineNumber);
             Assert.Equal("hello world", match.LineText);
+            Assert.False(result.IsTruncated);
         }
 
         [Fact]
@@ -40,9 +41,9 @@ namespace SecurePrReviewer.Tests
 
             var tool = new SearchRepositoryTool(_repositoryRoot);
 
-            var matches = await tool.ExecuteAsync("needle");
+            var result = await tool.ExecuteAsync("needle");
 
-            var match = Assert.Single(matches);
+            var match = Assert.Single(result.Matches);
             Assert.Equal(
                 Path.Combine("src", "nested", "file.txt"),
                 match.RelativePath);
@@ -62,9 +63,9 @@ namespace SecurePrReviewer.Tests
 
             var tool = new SearchRepositoryTool(_repositoryRoot);
 
-            var matches = await tool.ExecuteAsync("needle");
+            var result = await tool.ExecuteAsync("needle");
 
-            Assert.Empty(matches);
+            Assert.Empty(result.Matches);
         }
 
         [Fact]
@@ -76,9 +77,10 @@ namespace SecurePrReviewer.Tests
 
             var tool = new SearchRepositoryTool(_repositoryRoot);
 
-            var matches = await tool.ExecuteAsync("needle");
+            var result = await tool.ExecuteAsync("needle");
 
-            Assert.Empty(matches);
+            Assert.Empty(result.Matches);
+            Assert.False(result.IsTruncated);
         }
 
         [Theory]
@@ -92,20 +94,52 @@ namespace SecurePrReviewer.Tests
         }
 
         [Fact]
-        public async Task ExecuteAsync_MoreMatchesThanLimit_ReturnsBoundedResults()
+        public async Task ExecuteAsync_FewerMatchesThanLimit_IsNotTruncated()
         {
-            var lines = Enumerable.Range(0, 150)
+            await WriteNeedleLines(49);
+
+            var tool = new SearchRepositoryTool(_repositoryRoot);
+
+            var result = await tool.ExecuteAsync("needle");
+
+            Assert.Equal(49, result.Matches.Count);
+            Assert.False(result.IsTruncated);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_ExactlyTheLimit_IsNotTruncated()
+        {
+            await WriteNeedleLines(50);
+
+            var tool = new SearchRepositoryTool(_repositoryRoot);
+
+            var result = await tool.ExecuteAsync("needle");
+
+            Assert.Equal(50, result.Matches.Count);
+            Assert.False(result.IsTruncated);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_MoreMatchesThanLimit_ReturnsBoundedResultsAndIsTruncated()
+        {
+            await WriteNeedleLines(150);
+
+            var tool = new SearchRepositoryTool(_repositoryRoot);
+
+            var result = await tool.ExecuteAsync("needle");
+
+            Assert.Equal(50, result.Matches.Count);
+            Assert.True(result.IsTruncated);
+        }
+
+        private async Task WriteNeedleLines(int count)
+        {
+            var lines = Enumerable.Range(0, count)
                 .Select(i => $"needle {i}")
                 .ToArray();
             await File.WriteAllLinesAsync(
                 Path.Combine(_repositoryRoot, "file.txt"),
                 lines);
-
-            var tool = new SearchRepositoryTool(_repositoryRoot);
-
-            var matches = await tool.ExecuteAsync("needle");
-
-            Assert.Equal(100, matches.Count);
         }
 
         public void Dispose()
