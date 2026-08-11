@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SecurePrReviewer.Core\SecurePrReviewer.Core.csproj" />
+    <ProjectReference Include="..\..\src\SecurePrReviewer.App\SecurePrReviewer.App.csproj" />
   </ItemGroup>
 
   <ItemGroup>
