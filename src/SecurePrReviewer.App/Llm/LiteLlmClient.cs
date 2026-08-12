@@ -25,9 +25,21 @@ public sealed class LiteLlmClient : ILlmClient
         ChatCompletionRequest request,
         CancellationToken cancellationToken = default)
     {
+        var tools = request.Tools is { Count: > 0 }
+            ? request.Tools
+                .Select(t => new LiteLlmTool(
+                    "function",
+                    new LiteLlmFunctionDefinition(
+                        t.Name,
+                        t.Description,
+                        JsonSerializer.Deserialize<JsonElement>(t.ParametersSchemaJson))))
+                .ToArray()
+            : null;
+
         var payload = new LiteLlmChatRequest(
             ModelName,
-            request.Messages.Select(m => new LiteLlmMessage(m.Role, m.Content)).ToArray());
+            request.Messages.Select(m => new LiteLlmMessage(m.Role, m.Content)).ToArray(),
+            tools);
 
         using var content = new StringContent(
             JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -49,7 +61,18 @@ public sealed class LiteLlmClient : ILlmClient
 
     private sealed record LiteLlmChatRequest(
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("messages")] IReadOnlyList<LiteLlmMessage> Messages);
+        [property: JsonPropertyName("messages")] IReadOnlyList<LiteLlmMessage> Messages,
+        [property: JsonPropertyName("tools"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<LiteLlmTool>? Tools);
+
+    private sealed record LiteLlmTool(
+        [property: JsonPropertyName("type")] string Type,
+        [property: JsonPropertyName("function")] LiteLlmFunctionDefinition Function);
+
+    private sealed record LiteLlmFunctionDefinition(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("description")] string Description,
+        [property: JsonPropertyName("parameters")] JsonElement Parameters);
 
     private sealed record LiteLlmMessage(
         [property: JsonPropertyName("role")] string Role,

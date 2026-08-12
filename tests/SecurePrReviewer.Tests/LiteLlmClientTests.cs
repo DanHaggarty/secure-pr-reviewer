@@ -32,6 +32,47 @@ namespace SecurePrReviewer.Tests
         }
 
         [Fact]
+        public async Task CompleteAsync_IncludesToolsWhenSupplied()
+        {
+            var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidResponseJson);
+            var client = new LiteLlmClient(new HttpClient(handler));
+
+            await client.CompleteAsync(new ChatCompletionRequest(
+                new[] { new ChatMessage("user", "hello") },
+                new[]
+                {
+                    new ToolDefinition(
+                        "read_file",
+                        "Reads a file.",
+                        """{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}""")
+                }));
+
+            using var body = JsonDocument.Parse(handler.LastRequestBody!);
+            var tool = body.RootElement.GetProperty("tools")[0];
+            Assert.Equal("function", tool.GetProperty("type").GetString());
+            var function = tool.GetProperty("function");
+            Assert.Equal("read_file", function.GetProperty("name").GetString());
+            Assert.Equal("Reads a file.", function.GetProperty("description").GetString());
+            Assert.Equal(
+                "string",
+                function.GetProperty("parameters").GetProperty("properties")
+                    .GetProperty("path").GetProperty("type").GetString());
+        }
+
+        [Fact]
+        public async Task CompleteAsync_NoToolsSupplied_OmitsToolsField()
+        {
+            var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidResponseJson);
+            var client = new LiteLlmClient(new HttpClient(handler));
+
+            await client.CompleteAsync(new ChatCompletionRequest(
+                new[] { new ChatMessage("user", "hello") }));
+
+            using var body = JsonDocument.Parse(handler.LastRequestBody!);
+            Assert.False(body.RootElement.TryGetProperty("tools", out _));
+        }
+
+        [Fact]
         public async Task CompleteAsync_ParsesAssistantContentFromResponse()
         {
             var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidResponseJson);
