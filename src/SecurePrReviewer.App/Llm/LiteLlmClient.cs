@@ -8,8 +8,10 @@ namespace SecurePrReviewer.App.Llm;
 /// <summary>Sends chat completion requests through a LiteLLM OpenAI-compatible gateway.</summary>
 public sealed class LiteLlmClient : ILlmClient
 {
-    private const string Endpoint = "http://localhost:4000/v1/chat/completions";
-    private const string ModelName = "code-model";
+    private static readonly string Endpoint =
+        Environment.GetEnvironmentVariable("LITELLM_ENDPOINT") ?? "http://localhost:4000/v1/chat/completions";
+    private static readonly string ModelName =
+        Environment.GetEnvironmentVariable("LITELLM_MODEL") ?? "code-model";
 
     private readonly HttpClient _httpClient;
 
