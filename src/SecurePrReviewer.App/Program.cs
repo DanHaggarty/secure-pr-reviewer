@@ -1,40 +1,44 @@
 using SecurePrReviewer.App.Llm;
-using SecurePrReviewer.Core.Llm;
+using SecurePrReviewer.Core.Agent;
+using SecurePrReviewer.Core.Repository;
+using SecurePrReviewer.Core.Review;
+using SecurePrReviewer.Core.Tools;
 
-// Temporary smoke test proving the LiteLLM chat completion + tool-calling wiring works end to end.
-// Not part of the agent loop yet — see ADR-0001/ADR-0002/ADR-0003/ADR-0005.
+var repoPath = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
+var diff = args.Length > 1 ? await File.ReadAllTextAsync(args[1]) : "No diff supplied.";
+
 using var httpClient = new HttpClient();
-ILlmClient llmClient = new LiteLlmClient(httpClient);
-
-var tools = new[]
-{
-    new ToolDefinition(
-        "read_file",
-        "Reads a file's contents from the repository.",
-        """{"type":"object","properties":{"path":{"type":"string","description":"Path to the file, relative to the repository root."}},"required":["path"]}"""),
-    new ToolDefinition(
-        "search_repository",
-        "Searches text files in the repository for a literal string.",
-        """{"type":"object","properties":{"query":{"type":"string","description":"Literal text to search for."}},"required":["query"]}"""),
-};
+var llmClient = new LiteLlmClient(httpClient);
+var toolPolicy = new ToolPolicy(
+    new ReadFileTool(new RepositoryPathResolver(repoPath)),
+    new SearchRepositoryTool(repoPath));
+var agent = new SecurityReviewAgent(llmClient, toolPolicy);
 
 try
 {
-    var response = await llmClient.CompleteAsync(new ChatCompletionRequest(
-        new[] { new ChatMessage("user", "Use the read_file tool to read Program.cs") },
-        tools));
+    var review = await agent.ReviewAsync(new ReviewRequest(repoPath, diff));
 
-    if (response.ToolCalls is { Count: > 0 })
+    if (review.Findings.Count == 0)
     {
-        foreach (var toolCall in response.ToolCalls)
-            Console.WriteLine($"Tool call requested: {toolCall.Name}({toolCall.ArgumentsJson})");
+        Console.WriteLine("No findings.");
     }
     else
     {
-        Console.WriteLine(response.Content);
+        foreach (var finding in review.Findings)
+        {
+            Console.WriteLine($"{finding.Severity} — {finding.Title}");
+            Console.WriteLine(finding.Description);
+            Console.WriteLine(finding.Location);
+            Console.WriteLine(finding.Recommendation);
+            Console.WriteLine();
+        }
     }
 }
 catch (HttpRequestException ex)
 {
     Console.Error.WriteLine($"LLM request failed: {ex.Message}");
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine($"Review did not complete: {ex.Message}");
 }
