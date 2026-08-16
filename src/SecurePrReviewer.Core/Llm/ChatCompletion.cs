@@ -1,9 +1,15 @@
 namespace SecurePrReviewer.Core.Llm;
 
 /// <summary>A single message in a chat completion exchange.</summary>
-/// <param name="Role">The message role (e.g. "system", "user", "assistant").</param>
-/// <param name="Content">The message text.</param>
-public sealed record ChatMessage(string Role, string Content);
+/// <param name="Role">The message role (e.g. "system", "user", "assistant", "tool").</param>
+/// <param name="Content">The message text, or null for an assistant turn that only called tools.</param>
+/// <param name="ToolCalls">Tools this assistant turn requested, or null if it did not call any.</param>
+/// <param name="ToolCallId">For a "tool" role message, the id of the call this message answers.</param>
+public sealed record ChatMessage(
+    string Role,
+    string? Content,
+    IReadOnlyList<ToolCall>? ToolCalls = null,
+    string? ToolCallId = null);
 
 /// <summary>A tool the model may choose to call, described by name and a JSON Schema for its parameters.</summary>
 /// <param name="Name">The tool's identifier, as the model will refer to it.</param>

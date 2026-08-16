@@ -38,7 +38,11 @@ public sealed class LiteLlmClient : ILlmClient
 
         var payload = new LiteLlmChatRequest(
             ModelName,
-            request.Messages.Select(m => new LiteLlmMessage(m.Role, m.Content)).ToArray(),
+            request.Messages.Select(m => new LiteLlmMessage(
+                m.Role,
+                m.Content,
+                m.ToolCalls?.Select(ToLiteLlmToolCall).ToArray(),
+                m.ToolCallId)).ToArray(),
             tools);
 
         using var content = new StringContent(
@@ -66,6 +70,9 @@ public sealed class LiteLlmClient : ILlmClient
         return new ChatCompletionResponse(message.Content, toolCalls);
     }
 
+    private static LiteLlmToolCall ToLiteLlmToolCall(ToolCall toolCall) =>
+        new(toolCall.Id, "function", new LiteLlmToolCallFunction(toolCall.Name, toolCall.ArgumentsJson));
+
     private sealed record LiteLlmChatRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("messages")] IReadOnlyList<LiteLlmMessage> Messages,
@@ -85,10 +92,13 @@ public sealed class LiteLlmClient : ILlmClient
         [property: JsonPropertyName("role")] string Role,
         [property: JsonPropertyName("content")] string? Content,
         [property: JsonPropertyName("tool_calls"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        IReadOnlyList<LiteLlmToolCall>? ToolCalls = null);
+        IReadOnlyList<LiteLlmToolCall>? ToolCalls = null,
+        [property: JsonPropertyName("tool_call_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? ToolCallId = null);
 
     private sealed record LiteLlmToolCall(
         [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("type")] string Type,
         [property: JsonPropertyName("function")] LiteLlmToolCallFunction Function);
 
     private sealed record LiteLlmToolCallFunction(

@@ -79,6 +79,47 @@ namespace SecurePrReviewer.Tests
         }
 
         [Fact]
+        public async Task CompleteAsync_SerializesToolCallsOnHistoryMessage()
+        {
+            var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidResponseJson);
+            var client = new LiteLlmClient(new HttpClient(handler));
+
+            var assistantMessage = new ChatMessage(
+                "assistant",
+                null,
+                new[] { new ToolCall("call_abc", "read_file", """{"path":"Program.cs"}""") });
+
+            await client.CompleteAsync(new ChatCompletionRequest(
+                new[] { new ChatMessage("user", "hello"), assistantMessage }));
+
+            using var body = JsonDocument.Parse(handler.LastRequestBody!);
+            var message = body.RootElement.GetProperty("messages")[1];
+            var toolCall = message.GetProperty("tool_calls")[0];
+            Assert.Equal("call_abc", toolCall.GetProperty("id").GetString());
+            Assert.Equal("function", toolCall.GetProperty("type").GetString());
+            Assert.Equal("read_file", toolCall.GetProperty("function").GetProperty("name").GetString());
+            Assert.Equal(
+                """{"path":"Program.cs"}""",
+                toolCall.GetProperty("function").GetProperty("arguments").GetString());
+        }
+
+        [Fact]
+        public async Task CompleteAsync_SerializesToolCallIdOnToolResultMessage()
+        {
+            var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidResponseJson);
+            var client = new LiteLlmClient(new HttpClient(handler));
+
+            var toolResultMessage = new ChatMessage("tool", "file contents", ToolCallId: "call_abc");
+
+            await client.CompleteAsync(new ChatCompletionRequest(
+                new[] { new ChatMessage("user", "hello"), toolResultMessage }));
+
+            using var body = JsonDocument.Parse(handler.LastRequestBody!);
+            var message = body.RootElement.GetProperty("messages")[1];
+            Assert.Equal("call_abc", message.GetProperty("tool_call_id").GetString());
+        }
+
+        [Fact]
         public async Task CompleteAsync_ParsesAssistantContentFromResponse()
         {
             var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ValidResponseJson);
