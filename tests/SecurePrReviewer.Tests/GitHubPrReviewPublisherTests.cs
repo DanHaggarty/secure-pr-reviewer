@@ -69,6 +69,29 @@ namespace SecurePrReviewer.Tests
         }
 
         [Fact]
+        public async Task PublishReviewAsync_CannotReviewOwnPr_StillPostsCommentAndDoesNotThrow()
+        {
+            var handler = new FakeHttpMessageHandler(new[]
+            {
+                (HttpStatusCode.Created, "{}"),
+                (HttpStatusCode.UnprocessableEntity,
+                    """{"message":"Unprocessable Entity","errors":["Review Can not request changes on your own pull request"]}""")
+            });
+            var publisher = new GitHubPrReviewPublisher(new HttpClient(handler), "test-token");
+            var review = new SecurityReview(new[]
+            {
+                new SecurityFinding("HIGH", "SQL Injection", "desc", "src/Foo.cs", "use parameters")
+            });
+
+            await publisher.PublishReviewAsync(PrUrl, review);
+
+            Assert.Equal(2, handler.Requests.Count);
+            Assert.Equal(
+                new Uri("https://api.github.com/repos/DanHaggarty/secure-pr-reviewer/issues/123/comments"),
+                handler.Requests[0].RequestUri);
+        }
+
+        [Fact]
         public async Task PublishReviewAsync_UnsuccessfulStatusCode_ThrowsWithStatusAndBody()
         {
             var handler = new FakeHttpMessageHandler(HttpStatusCode.Forbidden, "Insufficient permissions");

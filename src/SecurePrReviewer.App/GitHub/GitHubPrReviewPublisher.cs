@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -36,18 +37,25 @@ public sealed class GitHubPrReviewPublisher : IPrReviewPublisher
         await SendAsync(
             $"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments",
             new { body = FormatComment(review) },
-            cancellationToken);
+            cancellationToken,
+            allowUnprocessable: false);
 
         if (review.Findings.Any(f => f.Severity == "HIGH"))
         {
+            // GitHub rejects a review request on your own PR (422); the comment above still stands, so this is not fatal.
             await SendAsync(
                 $"https://api.github.com/repos/{owner}/{repo}/pulls/{number}/reviews",
                 new { body = "Security review identified high-severity issues — see comment above.", @event = "REQUEST_CHANGES" },
-                cancellationToken);
+                cancellationToken,
+                allowUnprocessable: true);
         }
     }
 
-    private async Task SendAsync(string uri, object payload, CancellationToken cancellationToken)
+    private async Task SendAsync(
+        string uri,
+        object payload,
+        CancellationToken cancellationToken,
+        bool allowUnprocessable)
     {
         using var content = new StringContent(
             JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -59,9 +67,18 @@ public sealed class GitHubPrReviewPublisher : IPrReviewPublisher
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException(
-                $"GitHub request failed with status {(int)response.StatusCode} ({response.StatusCode}): {body}");
+        if (response.IsSuccessStatusCode)
+            return;
+
+        if (allowUnprocessable && response.StatusCode == HttpStatusCode.UnprocessableEntity)
+        {
+            Console.Error.WriteLine(
+                "Warning: could not request changes (GitHub does not allow reviewing your own pull request) — the comment was still posted.");
+            return;
+        }
+
+        throw new HttpRequestException(
+            $"GitHub request failed with status {(int)response.StatusCode} ({response.StatusCode}): {body}");
     }
 
     private static string FormatComment(SecurityReview review)

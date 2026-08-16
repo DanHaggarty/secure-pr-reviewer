@@ -5,8 +5,7 @@ namespace SecurePrReviewer.Tests
 {
     internal sealed class FakeHttpMessageHandler : HttpMessageHandler
     {
-        private readonly HttpStatusCode _statusCode;
-        private readonly string _responseBody;
+        private readonly Queue<(HttpStatusCode StatusCode, string Body)> _responses;
 
         public HttpRequestMessage? LastRequest { get; private set; }
         public string? LastRequestBody { get; private set; }
@@ -14,9 +13,13 @@ namespace SecurePrReviewer.Tests
         public List<string?> RequestBodies { get; } = new();
 
         public FakeHttpMessageHandler(HttpStatusCode statusCode, string responseBody)
+            : this(new[] { (statusCode, responseBody) })
         {
-            _statusCode = statusCode;
-            _responseBody = responseBody;
+        }
+
+        public FakeHttpMessageHandler(IEnumerable<(HttpStatusCode StatusCode, string Body)> responses)
+        {
+            _responses = new Queue<(HttpStatusCode, string)>(responses);
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -32,9 +35,13 @@ namespace SecurePrReviewer.Tests
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            return new HttpResponseMessage(_statusCode)
+            // Once only one response remains, keep returning it for any further calls,
+            // so single-response tests work regardless of how many calls they trigger.
+            var (statusCode, body) = _responses.Count > 1 ? _responses.Dequeue() : _responses.Peek();
+
+            return new HttpResponseMessage(statusCode)
             {
-                Content = new StringContent(_responseBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
         }
     }

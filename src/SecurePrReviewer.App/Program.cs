@@ -10,6 +10,9 @@ var diffSource = args.Length > 1 ? args[1] : null;
 
 using var httpClient = new HttpClient();
 
+if (diffSource is not null)
+    Console.WriteLine("Fetching diff...");
+
 var diff = diffSource is not null ? await ResolveDiffAsync(diffSource, httpClient) : "No diff supplied.";
 
 var llmClient = new LiteLlmClient(httpClient);
@@ -20,6 +23,7 @@ var agent = new SecurityReviewAgent(llmClient, toolPolicy);
 
 try
 {
+    Console.WriteLine("Reviewing (this can take a minute or more, depending on the model and how many tools it uses)...");
     var review = await agent.ReviewAsync(new ReviewRequest(repoPath, diff));
 
     if (review.Findings.Count == 0)
@@ -43,6 +47,7 @@ try
         var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN")
             ?? throw new InvalidOperationException("GITHUB_TOKEN environment variable is required to publish the review.");
 
+        Console.WriteLine("Publishing review to pull request...");
         IPrReviewPublisher publisher = new GitHubPrReviewPublisher(httpClient, token);
         await publisher.PublishReviewAsync(diffSource, review);
         Console.WriteLine("Published review to pull request.");
