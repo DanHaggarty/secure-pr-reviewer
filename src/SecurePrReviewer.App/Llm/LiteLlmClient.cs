@@ -53,10 +53,17 @@ public sealed class LiteLlmClient : ILlmClient
 
         var parsed = JsonSerializer.Deserialize<LiteLlmChatResponse>(body)
             ?? throw new InvalidOperationException("LiteLLM response body was empty.");
-        var messageContent = parsed.Choices?.FirstOrDefault()?.Message?.Content
+        var message = parsed.Choices?.FirstOrDefault()?.Message
             ?? throw new InvalidOperationException("LiteLLM response contained no choices.");
 
-        return new ChatCompletionResponse(messageContent);
+        if (string.IsNullOrEmpty(message.Content) && (message.ToolCalls is null || message.ToolCalls.Count == 0))
+            throw new InvalidOperationException("LiteLLM response contained neither content nor tool calls.");
+
+        var toolCalls = message.ToolCalls?
+            .Select(tc => new ToolCall(tc.Id, tc.Function.Name, tc.Function.Arguments))
+            .ToArray();
+
+        return new ChatCompletionResponse(message.Content, toolCalls);
     }
 
     private sealed record LiteLlmChatRequest(
@@ -76,7 +83,17 @@ public sealed class LiteLlmClient : ILlmClient
 
     private sealed record LiteLlmMessage(
         [property: JsonPropertyName("role")] string Role,
-        [property: JsonPropertyName("content")] string Content);
+        [property: JsonPropertyName("content")] string? Content,
+        [property: JsonPropertyName("tool_calls"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<LiteLlmToolCall>? ToolCalls = null);
+
+    private sealed record LiteLlmToolCall(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("function")] LiteLlmToolCallFunction Function);
+
+    private sealed record LiteLlmToolCallFunction(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("arguments")] string Arguments);
 
     private sealed record LiteLlmChatResponse(
         [property: JsonPropertyName("choices")] IReadOnlyList<LiteLlmChoice>? Choices);

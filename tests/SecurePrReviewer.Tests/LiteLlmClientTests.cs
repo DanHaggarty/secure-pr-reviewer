@@ -10,6 +10,12 @@ namespace SecurePrReviewer.Tests
         private const string ValidResponseJson =
             """{"choices":[{"message":{"role":"assistant","content":"pong"}}]}""";
 
+        private const string ToolCallResponseJson =
+            """{"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_abc","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"Program.cs\"}"}}]}}]}""";
+
+        private const string EmptyMessageResponseJson =
+            """{"choices":[{"message":{"role":"assistant","content":null}}]}""";
+
         [Fact]
         public async Task CompleteAsync_SendsExpectedRequest()
         {
@@ -82,6 +88,33 @@ namespace SecurePrReviewer.Tests
                 new[] { new ChatMessage("user", "hello") }));
 
             Assert.Equal("pong", response.Content);
+        }
+
+        [Fact]
+        public async Task CompleteAsync_ParsesToolCallsFromResponse()
+        {
+            var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, ToolCallResponseJson);
+            var client = new LiteLlmClient(new HttpClient(handler));
+
+            var response = await client.CompleteAsync(new ChatCompletionRequest(
+                new[] { new ChatMessage("user", "hello") }));
+
+            Assert.Null(response.Content);
+            var toolCall = Assert.Single(response.ToolCalls!);
+            Assert.Equal("call_abc", toolCall.Id);
+            Assert.Equal("read_file", toolCall.Name);
+            Assert.Equal("""{"path":"Program.cs"}""", toolCall.ArgumentsJson);
+        }
+
+        [Fact]
+        public async Task CompleteAsync_NeitherContentNorToolCalls_Throws()
+        {
+            var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, EmptyMessageResponseJson);
+            var client = new LiteLlmClient(new HttpClient(handler));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                client.CompleteAsync(new ChatCompletionRequest(
+                    new[] { new ChatMessage("user", "hello") })));
         }
 
         [Fact]
