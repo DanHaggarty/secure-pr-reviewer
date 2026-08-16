@@ -15,17 +15,17 @@ public sealed class SecurityReviewAgent
         "When finished, call submit_findings with your review.";
 
     private static readonly ToolDefinition ReadFileToolDefinition = new(
-        "read_file",
+        ToolNames.ReadFile,
         "Reads a file's contents from the repository.",
         """{"type":"object","properties":{"path":{"type":"string","description":"Path to the file, relative to the repository root."}},"required":["path"]}""");
 
     private static readonly ToolDefinition SearchRepositoryToolDefinition = new(
-        "search_repository",
+        ToolNames.SearchRepository,
         "Searches text files in the repository for a literal string.",
         """{"type":"object","properties":{"query":{"type":"string","description":"Literal text to search for."}},"required":["query"]}""");
 
     private static readonly ToolDefinition SubmitFindingsToolDefinition = new(
-        "submit_findings",
+        ToolNames.SubmitFindings,
         "Submits the completed security review.",
         """
         {
@@ -90,7 +90,7 @@ public sealed class SecurityReviewAgent
                 messages.Add(new ChatMessage("assistant", response.Content, response.ToolCalls));
 
                 // Other tool calls in this batch are intentionally ignored once submit_findings is present.
-                var submission = response.ToolCalls.FirstOrDefault(tc => tc.Name == "submit_findings");
+                var submission = response.ToolCalls.FirstOrDefault(tc => tc.Name == ToolNames.SubmitFindings);
                 if (submission is not null)
                     return ParseFindings(submission.ArgumentsJson);
 

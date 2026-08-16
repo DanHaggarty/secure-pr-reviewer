@@ -29,9 +29,9 @@ public sealed class ToolPolicy
         {
             return toolCall.Name switch
             {
-                "read_file" => await _readFileTool.ExecuteAsync(
+                ToolNames.ReadFile => await _readFileTool.ExecuteAsync(
                     GetArgument(toolCall.ArgumentsJson, "path"), cancellationToken),
-                "search_repository" => FormatSearchResult(
+                ToolNames.SearchRepository => FormatSearchResult(
                     await _searchRepositoryTool.ExecuteAsync(
                         GetArgument(toolCall.ArgumentsJson, "query"), cancellationToken)),
                 _ => $"Error: tool '{toolCall.Name}' is not permitted."
