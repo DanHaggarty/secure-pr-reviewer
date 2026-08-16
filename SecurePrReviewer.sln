@@ -5,6 +5,13 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{6C4A6E8B-6E86-4B9E-9E0F-9E2C7B1D4A10}"
+	ProjectSection(SolutionItems) = preProject
+		docker-compose.yml = docker-compose.yml
+		config\litellm.yaml = config\litellm.yaml
+		README.md = README.md
+	EndProjectSection
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SecurePrReviewer.App", "src\SecurePrReviewer.App\SecurePrReviewer.App.csproj", "{3BA2B462-C1FE-4E6C-BA3D-54D243D9D999}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SecurePrReviewer.Core", "src\SecurePrReviewer.Core\SecurePrReviewer.Core.csproj", "{FEF0F707-B68A-48E2-AE6A-8E1314904D63}"
