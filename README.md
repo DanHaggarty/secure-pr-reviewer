@@ -2,7 +2,7 @@
 
 A small agentic security reviewer for pull requests.
 
-The idea is fairly simple. Give the agent a PR diff and let it review the change for potential security problems.
+The idea is fairly simple. Give the agent a PR diff — or a GitHub PR URL — and let it review the change for potential security problems.
 
 If the diff isn't enough to understand the change, the agent can inspect the repository for more context.
 
@@ -12,26 +12,31 @@ This is deliberately a small project. The aim isn't to build another autonomous 
 
 ## What it does
 
-Given a PR diff, the agent can:
+Given a PR diff (supplied directly, or fetched from a GitHub PR URL), the agent can:
 
 * Review the change for potential security vulnerabilities.
 * Read relevant files from the repository when it needs more context.
 * Search the repository.
-* Return structured security findings with severity, location and reasoning.
+* Return structured security findings, each with a severity, title, description, location and recommendation.
+
+If the diff came from a real GitHub PR, the reviewer publishes its findings back to that PR:
+
+* It always posts a comment with the full findings (or "No findings.").
+* If any finding is `HIGH` severity, it additionally requests changes on the PR — the standard signal a human reviewer would give. Whether that actually blocks merging depends on the target repository's own branch protection rules.
 
 The agent runs in a bounded loop:
 
 **reason → request tool → validate → execute → observe → reason**
 
-There is a hard limit on how much it can do during a review.
+There is a hard limit of 5 iterations on how much it can do during a review.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    PR[PR Diff] --> G[Input Guard]
+    PR[GitHub PR URL] -->|IPrDiffFetcher| D[Diff]
 
-    G --> A[Agent]
+    D --> A[SecurityReviewAgent]
 
     A <--> GW[LiteLLM Gateway]
     GW <--> O[Ollama]
@@ -39,16 +44,16 @@ flowchart LR
 
     A --> P[Tool Policy]
 
-    P --> R[Read File]
-    P --> S[Search Repository]
-    P --> D[Get Diff]
+    P --> R[read_file]
+    P --> S[search_repository]
 
-    A --> OG[Output Guard]
+    A --> REV[Security Review]
 
-    OG --> RESULT[Security Review]
+    REV -->|IPrReviewPublisher| C[PR Comment]
+    REV -->|if HIGH severity| RC[Request Changes]
 ```
 
-The LLM doesn't touch the filesystem directly.
+The LLM doesn't touch the filesystem directly, and it doesn't touch GitHub directly either.
 
 It can ask to do something:
 
@@ -82,6 +87,12 @@ It gives the application a clean boundary between the agent and model infrastruc
 
 Ollama can run locally during development and later be hosted in Azure without changing the agent itself.
 
+The endpoint and model name are read from environment variables (`LITELLM_ENDPOINT`, `LITELLM_MODEL`), falling back to sensible local defaults if unset.
+
+## Why an interface for the PR source too?
+
+The same reasoning applies to where the diff comes from. `IPrDiffFetcher` and `IPrReviewPublisher` decouple the agent from GitHub specifically — `GitHubPrDiffFetcher` and `GitHubPrReviewPublisher` are the initial implementations, not the only ones the design assumes. See ADR-0007 and ADR-0008.
+
 ## Security
 
 There is an slightly odd security problem with an AI code reviewer.
@@ -111,16 +122,21 @@ the application should reject it.
 
 The model simply doesn't have that capability.
 
-The main controls are:
+The controls that are actually implemented:
 
-| Risk                  | Control                                     |
-| --------------------- | ------------------------------------------- |
-| Prompt injection      | Repository content treated as untrusted     |
-| Arbitrary actions     | Small allow-list of tools                   |
-| Path traversal        | Repository boundary enforced by application |
-| Malformed LLM actions | Structured responses and validation         |
-| Runaway agent         | Hard iteration/token limits                 |
-| Sensitive output      | Output scanning/redaction                   |
+| Risk                  | Control                                                          |
+| ---------------------- | ----------------------------------------------------------------- |
+| Prompt injection      | Repository content treated as untrusted                         |
+| Arbitrary actions     | Small allow-list of tools (`read_file`, `search_repository`)    |
+| Path traversal        | Repository boundary enforced by application, tested directly     |
+| Malformed LLM actions | `ToolPolicy` never throws — any failure becomes a safe, rejected observation, not a crash |
+| Runaway agent         | Hard iteration limit (5)                                          |
+
+Not yet built, deliberately deferred rather than silently skipped:
+
+* Input scanning of the diff/repository content before it reaches the model.
+* Output scanning/redaction of sensitive content in findings.
+* A structured audit trail of blocked/rejected tool calls.
 
 LLM guardrails are another layer rather than something the security of the system depends on.
 
@@ -132,7 +148,7 @@ A PR introduces:
 var sql = $"SELECT * FROM Users WHERE Name = '{name}'";
 ```
 
-The reviewer should return something along the lines of:
+The reviewer returns something along the lines of:
 
 ```text
 HIGH — Potential SQL Injection
@@ -144,6 +160,8 @@ src/Users/UserRepository.cs
 Use a parameterised query rather than constructing SQL from
 user controlled input.
 ```
+
+This isn't hypothetical — it's the actual output from a live run against a real GitHub PR containing exactly this change.
 
 If it needs to understand how `name` reaches this code, it can request other files from the repository and continue the review.
 
@@ -169,21 +187,28 @@ The point of this project is to build the smallest useful agent I can while keep
 * LiteLLM
 * Ollama
 * Local LLM
+* GitHub REST API
 * Docker
 * Automated unit and adversarial security tests
+
+## Running it
+
+```powershell
+.\scripts\run-review.ps1
+```
+
+Prompts for a repository path, a diff source (a GitHub PR URL or a local diff file), and — only if fetching from or publishing to a real PR — a GitHub token with the appropriate scope (read-only to fetch a diff, read/write to publish a review).
 
 ## Documentation
 
 The design decisions are documented rather than hidden in the implementation.
 
-* [Architecture](docs/architecture.md)
-* [Threat Model](docs/threat-model.md)
 * [Architecture Decision Records](docs/adr)
 
-The ADRs explain some of the choices made here, including why the agent loop is implemented explicitly rather than using an agent framework, why model access goes through LiteLLM, and why tools are deliberately restricted.
+The ADRs explain the choices made here: why the agent loop is implemented explicitly rather than using an agent framework, why model access goes through LiteLLM, why tools are deliberately restricted, why repository content is treated as untrusted, why cancellation is propagated from the start, and why both the model provider and the PR source sit behind interfaces rather than being called directly.
 
 ## Status
 
-Work in progress.
+The core loop works end to end: fetch a diff from a real GitHub PR, review it with a local model, and publish the findings back to that PR — proven against a live run, not just tests.
 
-Architecture first. Then the smallest possible implementation.
+Still deliberately out of scope for now: input/output guards and a structured audit trail (see Security, above).
