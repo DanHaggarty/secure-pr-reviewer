@@ -1,3 +1,4 @@
+using SecurePrReviewer.App.GitHub;
 using SecurePrReviewer.App.Llm;
 using SecurePrReviewer.Core.Agent;
 using SecurePrReviewer.Core.Repository;
@@ -5,9 +6,11 @@ using SecurePrReviewer.Core.Review;
 using SecurePrReviewer.Core.Tools;
 
 var repoPath = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
-var diff = args.Length > 1 ? await File.ReadAllTextAsync(args[1]) : "No diff supplied.";
 
 using var httpClient = new HttpClient();
+
+var diff = args.Length > 1 ? await ResolveDiffAsync(args[1], httpClient) : "No diff supplied.";
+
 var llmClient = new LiteLlmClient(httpClient);
 var toolPolicy = new ToolPolicy(
     new ReadFileTool(new RepositoryPathResolver(repoPath)),
@@ -41,4 +44,16 @@ catch (HttpRequestException ex)
 catch (InvalidOperationException ex)
 {
     Console.Error.WriteLine($"Review did not complete: {ex.Message}");
+}
+
+static async Task<string> ResolveDiffAsync(string diffSource, HttpClient httpClient)
+{
+    if (!diffSource.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
+        return await File.ReadAllTextAsync(diffSource);
+
+    var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+        ?? throw new InvalidOperationException("GITHUB_TOKEN environment variable is required to fetch a PR diff.");
+
+    IPrDiffFetcher prDiffFetcher = new GitHubPrDiffFetcher(httpClient, token);
+    return await prDiffFetcher.FetchDiffAsync(diffSource);
 }
