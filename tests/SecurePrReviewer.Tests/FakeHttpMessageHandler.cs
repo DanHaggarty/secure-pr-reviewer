@@ -10,6 +10,8 @@ namespace SecurePrReviewer.Tests
 
         public HttpRequestMessage? LastRequest { get; private set; }
         public string? LastRequestBody { get; private set; }
+        public List<HttpRequestMessage> Requests { get; } = new();
+        public List<string?> RequestBodies { get; } = new();
 
         public FakeHttpMessageHandler(HttpStatusCode statusCode, string responseBody)
         {
@@ -25,6 +27,8 @@ namespace SecurePrReviewer.Tests
             LastRequestBody = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            Requests.Add(request);
+            RequestBodies.Add(LastRequestBody);
 
             cancellationToken.ThrowIfCancellationRequested();
 
